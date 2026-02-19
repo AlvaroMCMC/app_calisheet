@@ -1,8 +1,6 @@
 services:
   api:
     build: ./api
-    ports:
-      - "8000:8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
       CLERK_JWKS_URL: ${CLERK_JWKS_URL}
