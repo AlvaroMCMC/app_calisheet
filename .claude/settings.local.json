@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx expo-doctor:*)",
+      "Bash(npx expo doctor:*)",
+      "Bash(npx expo install:*)",
+      "Bash(echo:*)",
+      "Bash(for pkg in base-64 expo-auth-session expo-local-authentication expo-secure-store expo-web-browser react react-dom react-native react-native-url-polyfill)",
+      "Bash(do)",
+      "Bash(if [ -d \"C:/Users/alvar/archivos/apps/app_calisheet/node_modules/$pkg\" ])",
+      "Bash(then)",
+      "Bash(else)",
+      "Bash(fi:*)",
+      "Bash(done)",
+      "Bash(npm uninstall:*)",
+      "Bash(node -e:*)"
+    ]
+  }
+}

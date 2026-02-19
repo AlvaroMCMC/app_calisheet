@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "CaliSheet",
+    "slug": "calisheet",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.calisheet.app"
+    },
+    "android": {
+      "package": "com.calisheet.app"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-secure-store",
+      "expo-av"
+    ]
+  }
+}
