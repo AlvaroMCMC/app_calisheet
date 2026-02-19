@@ -2,8 +2,8 @@ services:
   api:
     build: ./api
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB}
-      CLERK_JWKS_URL: ${CLERK_JWKS_URL}
+      DATABASE_URL: postgresql+asyncpg://calisheet:CaliSheet2026!@db/calisheet
+      CLERK_JWKS_URL: https://thankful-lamprey-62.clerk.accounts.dev/.well-known/jwks.json
     depends_on:
       db:
         condition: service_healthy
@@ -12,13 +12,13 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: calisheet
+      POSTGRES_USER: calisheet
+      POSTGRES_PASSWORD: CaliSheet2026!
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U calisheet"]
       interval: 5s
       timeout: 5s
       retries: 5
