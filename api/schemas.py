@@ -37,7 +37,7 @@ class ExerciseOut(BaseModel):
     routine_id: int
     name: str
     muscle: str
-    equipment: str  # JSON string
+    equipment: list[str]  # JSONB — array nativo
     rest_seconds: int
     sort_order: int
     rows: list[SetTemplateOut] = []
@@ -62,8 +62,8 @@ class RoutineOut(BaseModel):
     user_id: str
     title: str
     subtitle: str
-    tags: str
-    schedule_days: str
+    tags: list[str]         # JSONB — array nativo
+    schedule_days: list[str]
     last_performed: str
     completion_rate: Optional[int]
     streak: Optional[str]

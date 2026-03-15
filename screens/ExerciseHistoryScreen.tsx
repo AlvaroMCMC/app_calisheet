@@ -1,36 +1,17 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth as useClerkAuth } from '@clerk/clerk-expo';
-import {
-  getExerciseNames, getExerciseStats, getExerciseHistory, getVolumeProgression,
-  ExerciseStats, HistoryEntry, VolumePoint, SetDetail,
-} from '../services/api';
+import { getExerciseNames } from '../services/api';
+import type { ExerciseStats, HistoryEntry, VolumePoint, SetDetail } from '../types';
 import { Colors } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
+import { useExerciseHistory } from '../hooks/useExerciseHistory';
+import { formatVolume } from '../utils/date';
 
 type Period = 'week' | 'month';
-
-function getPeriodStart(period: Period): string {
-  const now = new Date();
-  if (period === 'week') {
-    const day = now.getDay();                    // 0=Dom … 6=Sáb
-    const diff = day === 0 ? -6 : 1 - day;      // retroceder hasta el lunes
-    const monday = new Date(now);
-    monday.setDate(now.getDate() + diff);
-    monday.setHours(0, 0, 0, 0);
-    return monday.toISOString();
-  }
-  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-}
-
-function formatVolume(kg: number): string {
-  return kg >= 1000
-    ? `${(kg / 1000).toFixed(1)} t`
-    : `${Math.round(kg)} kg`;
-}
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
@@ -132,50 +113,27 @@ export default function ExerciseHistoryScreen() {
   const [exerciseNames, setExerciseNames] = useState<string[]>([]);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>('month');
-  const [stats, setStats] = useState<ExerciseStats | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [volume, setVolume] = useState<VolumePoint[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Load exercise names on focus
+  // Lógica de datos delegada al hook
+  const { stats, history, volume, error: historyError, maxVolume } = useExerciseHistory(selectedName, period);
+
   const loadNames = useCallback(async () => {
     if (!userId) return;
-    const token = await getToken();
-    if (!token) return;
-    const names = await getExerciseNames(token);
-    setExerciseNames(names);
-    if (names.length > 0 && !selectedName) setSelectedName(names[0]);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const names = await getExerciseNames(token);
+      setExerciseNames(names);
+      if (names.length > 0 && !selectedName) setSelectedName(names[0]);
+      setLoadError(null);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Error al cargar ejercicios');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   useFocusEffect(useCallback(() => { loadNames(); }, [loadNames]));
-
-  // Reload history + volume when selected exercise changes
-  useEffect(() => {
-    if (!selectedName || !userId) return;
-    (async () => {
-      const token = await getToken();
-      if (!token) return;
-      const [h, v] = await Promise.all([
-        getExerciseHistory(token, selectedName),
-        getVolumeProgression(token, selectedName),
-      ]);
-      setHistory(h);
-      setVolume(v);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedName, userId]);
-
-  // Reload stats when exercise OR period changes
-  useEffect(() => {
-    if (!selectedName || !userId) return;
-    (async () => {
-      const token = await getToken();
-      if (!token) return;
-      const s = await getExerciseStats(token, selectedName, getPeriodStart(period));
-      setStats(s);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedName, period, userId]);
 
   const onSelectExercise = (name: string) => setSelectedName(name);
 
@@ -183,7 +141,7 @@ export default function ExerciseHistoryScreen() {
     n.toLowerCase().includes(search.toLowerCase())
   );
 
-  const maxVolume = volume.length > 0 ? Math.max(...volume.map((v) => v.volume)) : 1;
+  const displayError = loadError ?? historyError;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -191,6 +149,13 @@ export default function ExerciseHistoryScreen() {
         <Text style={styles.headerTitle}>Historial</Text>
         <Text style={styles.headerSubtitle}>Progreso por ejercicio</Text>
       </View>
+
+      {displayError && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="alert-circle-outline" size={16} color={Colors.status.danger} />
+          <Text style={styles.errorText}>{displayError}</Text>
+        </View>
+      )}
 
       <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
@@ -398,4 +363,6 @@ const styles = StyleSheet.create({
   sessionTotal: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.background.border },
   sessionTotalLabel: { fontSize: 12, color: Colors.text.secondary, fontWeight: '600' },
   sessionTotalValue: { fontSize: 14, fontWeight: '800', color: Colors.primary },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 8, padding: 12, borderRadius: 10, backgroundColor: Colors.status.danger + '15', borderWidth: 1, borderColor: Colors.status.danger + '40' },
+  errorText: { flex: 1, fontSize: 13, color: Colors.status.danger },
 });

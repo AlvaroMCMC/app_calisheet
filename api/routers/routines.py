@@ -89,8 +89,8 @@ async def create_routine(
         user_id=user_id,
         title=data.title,
         subtitle=data.subtitle,
-        tags=json.dumps(data.tags),
-        schedule_days=json.dumps(data.scheduleDays),
+        tags=data.tags,
+        schedule_days=data.scheduleDays,
     )
     db.add(routine)
     await db.flush()
@@ -114,8 +114,8 @@ async def update_routine(
 
     routine.title = data.title
     routine.subtitle = data.subtitle
-    routine.tags = json.dumps(data.tags)
-    routine.schedule_days = json.dumps(data.scheduleDays)
+    routine.tags = data.tags
+    routine.schedule_days = data.scheduleDays
 
     # Delete and re-insert exercises
     await db.execute(
@@ -149,6 +149,11 @@ async def save_session(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    # Validate routine ownership BEFORE creating the session
+    routine = await db.get(Routine, data.routineId)
+    if not routine or routine.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden: routine does not belong to this user")
+
     session = WorkoutSession(
         user_id=user_id,
         routine_id=data.routineId,
@@ -171,10 +176,8 @@ async def save_session(
         ))
 
     # Update last_performed on the routine
-    routine = await db.get(Routine, data.routineId)
-    if routine and routine.user_id == user_id:
-        now = datetime.now().strftime("%d %b %Y").lstrip("0")
-        routine.last_performed = now
+    now = datetime.now().strftime("%-d %b %Y")
+    routine.last_performed = now
 
     await db.commit()
     return {"id": session.id}
@@ -188,7 +191,7 @@ async def _save_exercises(db: AsyncSession, routine_id: int, exercises):
             routine_id=routine_id,
             name=ex.name,
             muscle=ex.muscle,
-            equipment=json.dumps(ex.equipment),
+            equipment=ex.equipment,
             rest_seconds=ex.rest_seconds,
             sort_order=i,
         )

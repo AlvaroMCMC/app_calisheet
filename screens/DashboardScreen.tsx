@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet,
+  View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,9 +9,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth as useClerkAuth } from '@clerk/clerk-expo';
 import { RootStackParamList } from '../App';
-import { RoutineRow, getRoutines } from '../services/api';
+import type { RoutineRow } from '../types';
 import { Colors } from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
+import { useRoutinesStore } from '../store/useRoutinesStore';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -24,8 +25,8 @@ function RoutineCard({ routine, onStart, onDetail }: {
   onStart: () => void;
   onDetail: () => void;
 }) {
-  const tags: string[] = JSON.parse(routine.tags ?? '[]');
-  const scheduleDays: string[] = JSON.parse(routine.schedule_days ?? '[]');
+  const tags = routine.tags ?? [];
+  const scheduleDays = routine.schedule_days ?? [];
   const isToday = scheduleDays.includes(TODAY);
   const progressValue = routine.completion_rate ?? (routine.streak ? 90 : null);
   const progressColor = routine.completion_rate
@@ -125,15 +126,15 @@ export default function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const { userId, displayName, email, signOut } = useAuth();
   const { getToken } = useClerkAuth();
-  const [routines, setRoutines] = useState<RoutineRow[]>([]);
   const [search, setSearch] = useState('');
+
+  const { routines, loading, error: loadError, fetch: fetchRoutines } = useRoutinesStore();
 
   const loadRoutines = useCallback(async () => {
     if (!userId) return;
     const token = await getToken();
     if (!token) return;
-    const rows = await getRoutines(token);
-    setRoutines(rows);
+    await fetchRoutines(token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
@@ -185,6 +186,17 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Ionicons name="alert-circle-outline" size={16} color={Colors.status.danger} />
+          <Text style={styles.errorText}>{loadError}</Text>
+        </View>
+      )}
+
+      {loading && routines.length === 0 && (
+        <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
+      )}
 
       <FlatList
         data={filtered}
@@ -259,6 +271,8 @@ const styles = StyleSheet.create({
   startButtonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   detailButton: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background.border, borderRadius: 8, height: 40 },
   detailButtonText: { color: Colors.text.primary, fontWeight: '600', fontSize: 14 },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 8, padding: 12, borderRadius: 10, backgroundColor: Colors.status.danger + '15', borderWidth: 1, borderColor: Colors.status.danger + '40' },
+  errorText: { flex: 1, fontSize: 13, color: Colors.status.danger },
   createCard: { alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: Colors.background.border, padding: 32, marginTop: 4, gap: 8 },
   createIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: Colors.background.border, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
   createTitle: { fontSize: 16, fontWeight: '700', color: Colors.text.primary },

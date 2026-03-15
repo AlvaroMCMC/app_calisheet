@@ -63,6 +63,8 @@ export default function ActiveWorkoutScreen({ navigation, route }: Props) {
   const [timerSeconds, setTimerSeconds] = useState(90);
   const [timerRunning, setTimerRunning] = useState(false);
   const restDefault = exercises[currentIdx]?.restSeconds ?? 90;
+  // Ref para evitar race condition: mantiene restDefault actualizado dentro del setInterval
+  const restDefaultRef = useRef(restDefault);
 
   // Load beep sounds once on mount
   useEffect(() => {
@@ -81,21 +83,30 @@ export default function ActiveWorkoutScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     (async () => {
-      const token = await getToken();
-      if (!token) return;
-      const { routine, exercises: exs } = await getRoutineWithExercises(token, routineId);
-      setRoutineName(routine?.title ?? 'Entrenamiento');
-      const mapped = exs.map((ex) => ({
-        name: ex.name,
-        muscle: ex.muscle,
-        equipment: JSON.parse(ex.equipment ?? '[]'),
-        restSeconds: ex.rest_seconds ?? 90,
-        sets: expandSets(ex.rows),
-      }));
-      setExercises(mapped);
-      setTimerSeconds(mapped[0]?.restSeconds ?? 90);
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const { routine, exercises: exs } = await getRoutineWithExercises(token, routineId);
+        setRoutineName(routine?.title ?? 'Entrenamiento');
+        const mapped = exs.map((ex) => ({
+          name: ex.name,
+          muscle: ex.muscle,
+          equipment: ex.equipment ?? [],
+          restSeconds: ex.rest_seconds ?? 90,
+          sets: expandSets(ex.rows),
+        }));
+        setExercises(mapped);
+        setTimerSeconds(mapped[0]?.restSeconds ?? 90);
+      } catch (err) {
+        Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo cargar el entrenamiento');
+      }
     })();
   }, [routineId]);
+
+  // Mantener el ref sincronizado con el valor actual de restDefault
+  useEffect(() => {
+    restDefaultRef.current = restDefault;
+  }, [restDefault]);
 
   // Sync timer when switching exercises (without timer running)
   useEffect(() => {
@@ -109,14 +120,18 @@ export default function ActiveWorkoutScreen({ navigation, route }: Props) {
     if (!timerRunning) return;
     const interval = setInterval(() => {
       setTimerSeconds((prev) => {
-        if (prev <= 1) { clearInterval(interval); setTimerRunning(false); soundEndRef.current?.replayAsync(); return restDefault; }
+        if (prev <= 1) {
+          clearInterval(interval);
+          setTimerRunning(false);
+          soundEndRef.current?.replayAsync();
+          return restDefaultRef.current; // Usa el ref — siempre el valor actualizado
+        }
         if (prev <= 10) { soundRef.current?.replayAsync(); }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timerRunning]);
+  }, [timerRunning]); // restDefault no necesita ser dependencia gracias al ref
 
   const currentExercise = exercises[currentIdx];
 

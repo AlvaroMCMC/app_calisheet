@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from datetime import datetime
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, distinct, cast
 from sqlalchemy.types import DateTime
@@ -32,10 +33,11 @@ async def get_exercise_names(
 @router.get("/history/stats", response_model=ExerciseStats)
 async def get_exercise_stats(
     name: str,
-    since: str,
+    since: datetime = Query(..., description="ISO 8601 datetime — filters sessions on/after this date"),
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    since_iso = since.isoformat()
     result = await db.execute(
         select(
             func.max(SessionSet.reps).label("max_reps"),
@@ -47,7 +49,7 @@ async def get_exercise_stats(
         .where(
             SessionSet.exercise_name == name,
             WorkoutSession.user_id == user_id,
-            WorkoutSession.finished_at >= since,
+            WorkoutSession.finished_at >= since_iso,
         )
     )
     row = result.one()
@@ -67,55 +69,53 @@ async def get_exercise_history(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    sessions_result = await db.execute(
+    # Single JOIN query — eliminates N+1 problem
+    rows_result = await db.execute(
         select(
-            SessionSet.session_id,
+            WorkoutSession.id.label("session_id"),
             WorkoutSession.routine_name,
             WorkoutSession.finished_at,
+            SessionSet.id.label("set_id"),
+            SessionSet.weight,
+            SessionSet.reps,
+            SessionSet.rpe,
+            SessionSet.nivel_anillas,
         )
-        .join(WorkoutSession, WorkoutSession.id == SessionSet.session_id)
+        .join(SessionSet, SessionSet.session_id == WorkoutSession.id)
         .where(
             SessionSet.exercise_name == name,
             WorkoutSession.user_id == user_id,
         )
-        .distinct()
-        .order_by(WorkoutSession.finished_at.desc())
-        .limit(20)
+        .order_by(WorkoutSession.finished_at.desc(), SessionSet.id)
     )
-    sessions = sessions_result.all()
+    rows = rows_result.all()
 
-    entries = []
-    for session_id, routine_name, finished_at in sessions:
-        sets_result = await db.execute(
-            select(SessionSet)
-            .where(
-                SessionSet.session_id == session_id,
-                SessionSet.exercise_name == name,
-            )
-            .order_by(SessionSet.id)
-        )
-        sets = sets_result.scalars().all()
-        total_volume = sum(s.weight * s.reps for s in sets)
-
-        from datetime import datetime
-        try:
-            date_str = datetime.fromisoformat(finished_at).strftime("%d %b %Y").lstrip("0")
-        except Exception:
-            date_str = finished_at
-
-        entries.append(HistoryEntry(
-            sessionId=session_id,
-            date=date_str,
-            routineName=routine_name,
-            sets=[SetDetail(
-                weight=s.weight,
-                reps=s.reps,
-                rpe=s.rpe,
-                nivelAnillas=s.nivel_anillas,
-            ) for s in sets],
-            totalVolume=total_volume,
+    # Group by session in Python — keeps at most 20 sessions
+    sessions: dict[int, dict] = {}
+    for row in rows:
+        if row.session_id not in sessions:
+            if len(sessions) >= 20:
+                continue
+            try:
+                date_str = datetime.fromisoformat(row.finished_at).strftime("%-d %b %Y")
+            except ValueError:
+                date_str = row.finished_at
+            sessions[row.session_id] = {
+                "sessionId": row.session_id,
+                "date": date_str,
+                "routineName": row.routine_name,
+                "sets": [],
+                "totalVolume": 0.0,
+            }
+        sessions[row.session_id]["sets"].append(SetDetail(
+            weight=row.weight,
+            reps=row.reps,
+            rpe=row.rpe,
+            nivelAnillas=row.nivel_anillas,
         ))
-    return entries
+        sessions[row.session_id]["totalVolume"] += row.weight * row.reps
+
+    return [HistoryEntry(**s) for s in sessions.values()]
 
 
 # ─── GET /history/volume?name=X ───────────────────────────────────────────────

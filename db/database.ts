@@ -1,14 +1,24 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 
-// ─── Row types ────────────────────────────────────────────────────────────────
+// ─── Re-export shared types from central types.ts ─────────────────────────────
+export type {
+  SessionSetInput,
+  ExerciseStats,
+  SetDetail,
+  HistoryEntry,
+  VolumePoint,
+} from '../types';
 
+import type { SessionSetInput, ExerciseStats, SetDetail, HistoryEntry, VolumePoint } from '../types';
+
+// SQLite almacena arrays como JSON strings — tipos locales independientes del API
 export interface RoutineRow {
   id: number;
   user_id: string;
   title: string;
   subtitle: string;
-  tags: string;          // JSON string[]
-  schedule_days: string; // JSON string[]
+  tags: string;          // JSON string (SQLite TEXT)
+  schedule_days: string; // JSON string (SQLite TEXT)
   last_performed: string;
   completion_rate: number | null;
   streak: string | null;
@@ -20,8 +30,9 @@ export interface ExerciseRow {
   routine_id: number;
   name: string;
   muscle: string;
-  equipment: string;   // JSON string[]
+  equipment: string; // JSON string (SQLite TEXT)
   sort_order: number;
+  rest_seconds: number;
 }
 
 export interface SetTemplateRow {
@@ -30,7 +41,7 @@ export interface SetTemplateRow {
   sets: string;
   reps: string;
   weight: string;
-  nivel_anillas: string;   // ring height 1-14, '' if unused
+  nivel_anillas: string;
   sort_order: number;
 }
 
@@ -38,14 +49,7 @@ export interface ExerciseWithSets extends ExerciseRow {
   rows: SetTemplateRow[];
 }
 
-export interface SessionSetInput {
-  exerciseName: string;
-  weight: number;
-  reps: number;
-  rpe?: number;
-  nivelAnillas?: number;   // ring height 1-14
-}
-
+// SessionInput local incluye userId (requerido por SQLite local)
 export interface SessionInput {
   userId: string;
   routineId: number;
@@ -54,34 +58,6 @@ export interface SessionInput {
   finishedAt: string;
   totalVolumeKg: number;
   sets: SessionSetInput[];
-}
-
-export interface ExerciseStats {
-  maxReps: number;
-  maxWeight: number;
-  totalSessions: number;
-  totalVolume: number;   // SUM(weight × reps) for the selected period
-}
-
-export interface SetDetail {
-  weight: number;
-  reps: number;
-  rpe: number | null;
-  nivelAnillas: number | null;  // ring height 1-14, null if unused
-}
-
-export interface HistoryEntry {
-  sessionId: number;
-  date: string;
-  routineName: string;
-  sets: SetDetail[];     // full detail per set
-  totalVolume: number;   // sum of weight × reps for this session entry
-}
-
-export interface VolumePoint {
-  month: string;
-  volume: number;
-  label: string;
 }
 
 // ─── Setup ────────────────────────────────────────────────────────────────────

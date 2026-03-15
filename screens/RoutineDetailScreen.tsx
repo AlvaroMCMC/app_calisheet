@@ -43,25 +43,29 @@ export default function RoutineDetailScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!routineId) return;
     (async () => {
-      const token = await getToken();
-      if (!token) return;
-      const { routine, exercises: exs } = await getRoutineWithExercises(token, routineId);
-      if (routine) {
-        setTitle(routine.title);
-        const days: string[] = JSON.parse(routine.schedule_days ?? '[]');
-        setSchedule(days);
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const { routine, exercises: exs } = await getRoutineWithExercises(token, routineId);
+        if (routine) {
+          setTitle(routine.title);
+          setSchedule(routine.schedule_days ?? []);
+        }
+        setExercises(
+          exs.map((ex, i) => ({
+            id: i + 1,
+            name: ex.name,
+            muscle: ex.muscle,
+            equipment: ex.equipment ?? [],
+            restSeconds: ex.rest_seconds ?? 90,
+            rows: ex.rows.map((r, j) => ({ id: j + 1, sets: r.sets, reps: r.reps, weight: r.weight, nivel: r.nivel_anillas ?? '' })),
+          }))
+        );
+      } catch (err) {
+        Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo cargar la rutina');
+      } finally {
+        setLoading(false);
       }
-      setExercises(
-        exs.map((ex, i) => ({
-          id: i + 1,
-          name: ex.name,
-          muscle: ex.muscle,
-          equipment: JSON.parse(ex.equipment ?? '[]'),
-          restSeconds: ex.rest_seconds ?? 90,
-          rows: ex.rows.map((r, j) => ({ id: j + 1, sets: r.sets, reps: r.reps, weight: r.weight, nivel: r.nivel_anillas ?? '' })),
-        }))
-      );
-      setLoading(false);
     })();
   }, [routineId]);
 

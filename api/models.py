@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Text, ForeignKey, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -10,8 +11,10 @@ class Routine(Base):
     user_id = Column(String, nullable=False, index=True)
     title = Column(String, nullable=False, default="")
     subtitle = Column(String, default="")
-    tags = Column(Text, default="[]")           # JSON string[]
-    schedule_days = Column(Text, default="[]")  # JSON string[]
+    # JSONB: almacenamiento nativo, permite indexado y queries sobre arrays
+    # Migración requerida: ALTER TABLE routines ALTER COLUMN tags TYPE jsonb USING tags::jsonb;
+    tags = Column(JSONB, default=list, server_default="'[]'::jsonb")
+    schedule_days = Column(JSONB, default=list, server_default="'[]'::jsonb")
     last_performed = Column(String, default="Nunca")
     completion_rate = Column(Integer, nullable=True)
     streak = Column(String, nullable=True)
@@ -28,7 +31,8 @@ class RoutineExercise(Base):
     routine_id = Column(Integer, ForeignKey("routines.id", ondelete="CASCADE"), nullable=False)
     name = Column(String, nullable=False, default="")
     muscle = Column(String, default="")
-    equipment = Column(Text, default="[]")  # JSON string[]
+    # Migración: ALTER TABLE routine_exercises ALTER COLUMN equipment TYPE jsonb USING equipment::jsonb;
+    equipment = Column(JSONB, default=list, server_default="'[]'::jsonb")
     rest_seconds = Column(Integer, default=90)
     sort_order = Column(Integer, default=0)
 

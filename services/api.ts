@@ -1,111 +1,83 @@
-// HTTP client — reemplaza db/database.ts
-// Mismos tipos de retorno para que las pantallas cambien lo mínimo posible.
+// HTTP client — wrapper sobre fetch con manejo de errores y tipos centralizados.
+// Los tipos son importados desde types.ts (fuente única de verdad).
 
-export interface RoutineRow {
-  id: number;
-  user_id: string;
-  title: string;
-  subtitle: string;
-  tags: string;          // JSON string[]
-  schedule_days: string; // JSON string[]
-  last_performed: string;
-  completion_rate: number | null;
-  streak: string | null;
-  exercises_count: number;
-}
+export type {
+  RoutineRow,
+  ExerciseRow,
+  SetTemplateRow,
+  ExerciseWithSets,
+  SessionSetInput,
+  SessionInput,
+  ExerciseStats,
+  SetDetail,
+  HistoryEntry,
+  VolumePoint,
+} from '../types';
 
-export interface ExerciseRow {
-  id: number;
-  routine_id: number;
-  name: string;
-  muscle: string;
-  equipment: string;  // JSON string[]
-  rest_seconds: number;
-  sort_order: number;
-}
-
-export interface SetTemplateRow {
-  id: number;
-  exercise_id: number;
-  sets: string;
-  reps: string;
-  weight: string;
-  nivel_anillas: string;
-  sort_order: number;
-}
-
-export interface ExerciseWithSets extends ExerciseRow {
-  rows: SetTemplateRow[];
-}
-
-export interface SessionSetInput {
-  exerciseName: string;
-  weight: number;
-  reps: number;
-  rpe?: number;
-  nivelAnillas?: number;
-}
-
-export interface SessionInput {
-  routineId: number;
-  routineName: string;
-  startedAt: string;
-  finishedAt: string;
-  totalVolumeKg: number;
-  sets: SessionSetInput[];
-}
-
-export interface ExerciseStats {
-  maxReps: number;
-  maxWeight: number;
-  totalSessions: number;
-  totalVolume: number;
-}
-
-export interface SetDetail {
-  weight: number;
-  reps: number;
-  rpe: number | null;
-  nivelAnillas: number | null;
-}
-
-export interface HistoryEntry {
-  sessionId: number;
-  date: string;
-  routineName: string;
-  sets: SetDetail[];
-  totalVolume: number;
-}
-
-export interface VolumePoint {
-  month: string;
-  volume: number;
-  label: string;
-}
+import type {
+  RoutineRow,
+  ExerciseWithSets,
+  SessionInput,
+  ExerciseStats,
+  HistoryEntry,
+  VolumePoint,
+} from '../types';
 
 // ─── Core fetch ───────────────────────────────────────────────────────────────
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8000';
+const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_RETRIES = 2;
+
+/** Errores de red recuperables — se reintenta. */
+function isRetryable(err: unknown): boolean {
+  if (err instanceof Error) {
+    return (
+      err.message.includes('Network request failed') ||
+      err.message.includes('Failed to fetch')
+    );
+  }
+  return false;
+}
 
 async function apiFetch<T>(
   path: string,
   token: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  attempt = 0
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${res.status}: ${text}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(options.headers ?? {}),
+      },
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText);
+      // 401/403 no se reintenta — son errores de autenticación/autorización
+      throw new Error(`API ${res.status}: ${text}`);
+    }
+
+    if (res.status === 204) return undefined as T;
+    return res.json();
+  } catch (err) {
+    if (attempt < MAX_RETRIES && isRetryable(err)) {
+      const backoff = Math.pow(2, attempt) * 500; // 500ms, 1000ms
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+      return apiFetch<T>(path, token, options, attempt + 1);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
 }
 
 // ─── Routines ─────────────────────────────────────────────────────────────────
